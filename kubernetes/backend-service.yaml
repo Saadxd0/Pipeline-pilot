@@ -1,0 +1,17 @@
+# backend-service.yaml — ClusterIP service for the FastAPI backend
+# The Ingress controller routes external /api traffic to this service.
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend
+  labels:
+    app: backend
+    tier: application
+spec:
+  selector:
+    app: backend
+  ports:
+    - name: http
+      port: 8000
+      targetPort: 8000
+  type: ClusterIP

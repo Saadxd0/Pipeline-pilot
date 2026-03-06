@@ -1,0 +1,32 @@
+# mysql-service.yaml — ClusterIP service (internal only — not exposed outside the cluster)
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+  labels:
+    app: mysql
+    tier: database
+spec:
+  selector:
+    app: mysql
+  ports:
+    - port: 3306
+      targetPort: 3306
+  # ClusterIP is the default — MySQL is only reachable by other pods
+  type: ClusterIP
+---
+# Secret — store DB credentials (base64-encoded values)
+# To generate: echo -n 'value' | base64
+# IMPORTANT: In production, use a secrets manager (Vault, AWS Secrets Manager, etc.)
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-secret
+type: Opaque
+data:
+  # echo -n 'rootpassword' | base64  →  cm9vdHBhc3N3b3Jk
+  root-password: cm9vdHBhc3N3b3Jk
+  # echo -n 'pilot' | base64         →  cGlsb3Q=
+  username: cGlsb3Q=
+  # echo -n 'pilotpass' | base64     →  cGlsb3RwYXNz
+  password: cGlsb3RwYXNz

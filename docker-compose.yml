@@ -1,0 +1,71 @@
+# docker-compose.yml — Orchestrates all three services locally
+# Run with: docker compose up --build
+# Requires Docker Desktop or Docker Engine with Compose v2
+
+version: "3.9"
+
+services:
+
+  # ── MySQL Database ──────────────────────────────────────────────────────────
+  mysql:
+    build:
+      context: ./database        # Uses database/Dockerfile (custom image)
+      dockerfile: Dockerfile
+    container_name: pipelinepilot-db
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword      # Change in production!
+      MYSQL_DATABASE: pipelinepilot
+      MYSQL_USER: pilot
+      MYSQL_PASSWORD: pilotpass
+    ports:
+      - "3306:3306"
+    volumes:
+      # Persist DB data across container restarts
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "pilot", "-ppilotpass"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  # ── FastAPI Backend ─────────────────────────────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: pipelinepilot-api
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: mysql+pymysql://pilot:pilotpass@mysql:3306/pipelinepilot
+      ALLOWED_ORIGINS: http://localhost:3000,http://frontend
+    ports:
+      - "8000:8000"
+    depends_on:
+      mysql:
+        condition: service_healthy   # Wait until MySQL passes its health check
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  # ── React Frontend ──────────────────────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: pipelinepilot-ui
+    restart: unless-stopped
+    ports:
+      - "3000:80"    # Nginx listens on 80 inside the container
+    depends_on:
+      backend:
+        condition: service_healthy
+
+# ── Named Volumes ──────────────────────────────────────────────────────────
+volumes:
+  mysql_data:
+    driver: local

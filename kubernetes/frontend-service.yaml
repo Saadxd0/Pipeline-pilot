@@ -1,0 +1,19 @@
+# frontend-service.yaml — Service for the React frontend
+# Uses LoadBalancer type so cloud providers assign an external IP automatically.
+# For local Minikube, use: minikube service frontend --url
+apiVersion: v1
+kind: Service
+metadata:
+  name: frontend
+  labels:
+    app: frontend
+    tier: presentation
+spec:
+  selector:
+    app: frontend
+  ports:
+    - name: http
+      port: 80
+      targetPort: 80
+  # Change to ClusterIP if using an Ingress controller (recommended for production)
+  type: LoadBalancer
