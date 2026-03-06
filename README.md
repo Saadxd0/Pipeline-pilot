@@ -52,6 +52,51 @@ To wipe DB volume too: `docker compose down -v`
 
 ---
 
+## Docker Images
+
+All three services build from their own Dockerfiles. Each uses a **multi-stage build** to keep images lean.
+
+| Service  | Context          | Base Image         | Final Size |
+|----------|------------------|--------------------|------------|
+| frontend | `./frontend`     | node:20-alpine → nginx:1.26-alpine | ~25 MB |
+| backend  | `./backend`      | python:3.12-slim (multi-stage)     | ~120 MB |
+| mysql    | `./database`     | mysql:8.0                          | ~580 MB |
+
+### Database Dockerfile — `database/Dockerfile`
+
+The database service does **not** use a plain `mysql:8.0` image pulled from Docker Hub.
+Instead it is built from a custom Dockerfile that bakes in the schema and config:
+
+```
+database/
+├── Dockerfile    ← extends mysql:8.0
+├── init.sql      ← schema + seed data (COPY'd into /docker-entrypoint-initdb.d/)
+└── my.cnf        ← custom MySQL config (COPY'd into /etc/mysql/conf.d/)
+```
+
+**What `database/Dockerfile` does:**
+
+1. **Extends `mysql:8.0`** — inherits all MySQL entrypoint logic.
+2. **Bakes in `init.sql`** — copied to `/docker-entrypoint-initdb.d/init.sql`.
+   MySQL automatically executes every `*.sql` file in that directory on the very first
+   container startup (when the data volume is empty).
+3. **Bakes in `my.cnf`** — copied to `/etc/mysql/conf.d/pipelinepilot.cnf` with:
+   - `utf8mb4` charset/collation everywhere
+   - `max_connections = 200`
+   - `wait_timeout = 600` (prevents stale connection drops)
+   - Permissive `sql_mode` compatible with SQLAlchemy
+4. **Built-in `HEALTHCHECK`** — `mysqladmin ping` so Docker Compose and Kubernetes
+   know exactly when MySQL is ready before starting the backend.
+
+**Why a custom image instead of volume-mounting init.sql?**
+
+| Approach | init.sql delivery | Portability |
+|----------|-------------------|-------------|
+| `image: mysql:8.0` + volume mount | Requires the host file to exist at the right path | Breaks if repo isn't checked out |
+| Custom `database/Dockerfile` (this project) | Baked into the image layer | Works anywhere — `docker pull`, Kubernetes, CI |
+
+---
+
 ## Project Structure
 
 ```
@@ -89,7 +134,9 @@ pipelinepilot/
 │   └── Dockerfile
 │
 ├── database/
-│   └── init.sql               # Schema + seed data
+│   ├── Dockerfile             # Custom MySQL image (extends mysql:8.0)
+│   ├── init.sql               # Schema + seed data (auto-runs on first boot)
+│   └── my.cnf                 # Custom MySQL config (charset, connections, timeouts)
 │
 ├── kubernetes/
 │   ├── mysql-deployment.yaml
